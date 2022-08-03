@@ -1,0 +1,251 @@
+1 <!DOCTYPE html>
+  2 <html lang="en">
+  3     <head>
+  4         <title>three.js webgl - interactive - voxel painter</title>
+  5         <meta charset="utf-8">
+  6         <title>opengl实现我的世界</title>
+  7         <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  8         <style>
+  9             body {
+ 10                 font-family: Monospace;
+ 11                 background-color: #f0f0f0;
+ 12                 margin: 0px;
+ 13                 overflow: hidden;
+ 14             }
+ 15             #aa{
+ 16                 font-size: 10px;
+ 17             }
+ 18 
+ 19             #oldie { background-color: #ddd !important }
+ 20         </style>
+ 21     </head>
+ 22     <body>
+ 23         <a id="aa">正方体</a>
+ 24         <img src="textures/zhengfangti.png">
+ 25         <a id="aa">球体</a>
+ 26         <img src="textures/qiuti.png">
+ 27         <a id="aa">长方体</a>
+ 28         <img src="textures/changfangti.png">
+ 29         <a id="aa">圆柱体</a>
+ 30         <img src="textures/yuanzhuti.png">
+ 31         <script src="../build/three.js"></script>
+ 32         <script src="js/Detector.js"></script>
+ 33         <script src="js/jquery-2.2.4.min.js"></script>
+ 34         <script>
+ 35             if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+ 36             //detector是一个探测器，引用了detector.js，用来探测webgl的支持情况
+ 37 
+ 38             var container;
+ 39             var camera, scene, renderer;
+ 40             var plane, cube;
+ 41             var mouse, raycaster, isShiftDown = false;
+ 42 
+ 43             var rollOverMesh, rollOverMaterial;
+ 44             var cubeGeo, cubeMaterial;
+ 45 
+ 46             var objects = [];
+ 47 
+ 48             init();
+ 49             render();//渲染
+ 50 
+ 51 
+ 52 
+ 53             function init(){
+ 54 
+ 55                 container = document.createElement( 'div' );//使用createElement创建一个div，就是整个页面
+ 56                 document.body.appendChild( container );//添加子节点
+ 57 
+ 58                 var info = document.createElement( 'div' );//在大的div中创建第一个div，表示head部分，名字为info
+ 59                 info.style.position = 'absolute';
+ 60                 info.style.top = '10px';
+ 61                 info.style.width = '100%';
+ 62                 info.style.textAlign = 'center';
+ 63                 info.innerHTML = '计算机图形学作业：简单模拟我的世界<br><strong>shift + click</strong>：移除图形<br>' +
+ 64                 '<button class="btn1" onclick="method1()">正方体</button><button class="btn2" onclick="method2()">球体</button>' +
+ 65                 '<button class="btn3" onclick="method3()">长方体</button><button class="btn4" onclick="method4()">圆柱体</button>' +
+ 66                 '<br><button class="btn5" onclick="method5()">预览</button>';
+ 67                 container.appendChild( info );//将创建的info添加到大的div中
+ 68 
+ 69                 camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );//设置透视投影的相机
+ 70                 camera.position.set( 500, 800, 1300 );//设置相机坐标
+ 71                 camera.lookAt( new THREE.Vector3() );//设置视野的中心坐标
+ 72 
+ 73                 scene = new THREE.Scene();//设置场景,场景是一个三维空间，用Scene类声明一个对象scene
+ 74                 // grid，定义画布上的坐标格子
+ 75                 var size = 500, step = 50;
+ 76                 var geometry = new THREE.Geometry();//创建一个基本的几何形状
+ 77                 for ( var i = - size; i <= size; i += step ) {
+ 78                     geometry.vertices.push( new THREE.Vector3( - size, 0, i ) );
+ 79                     geometry.vertices.push( new THREE.Vector3(   size, 0, i ) );
+ 80                     geometry.vertices.push( new THREE.Vector3( i, 0, - size ) );
+ 81                     geometry.vertices.push( new THREE.Vector3( i, 0,   size ) );
+ 82                 }
+ 83                 var material = new THREE.LineBasicMaterial( { color: 0x000000, opacity: 0.2, transparent: true } );
+ 84                 //创建一个线条材质，线条颜色黑色，透明度0.2
+ 85                 var line = new THREE.LineSegments( geometry, material );
+ 86                 scene.add( line );
+ 87                 raycaster = new THREE.Raycaster();
+ 88                 mouse = new THREE.Vector2();
+ 89                 var geometry = new THREE.PlaneBufferGeometry( 1000, 1000 );
+ 90                 geometry.rotateX( - Math.PI / 2 );
+ 91                 plane = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( { visible: false } ) );
+ 92                 scene.add( plane );
+ 93                 objects.push( plane );
+ 94                 // 创建环境光为灰色
+ 95                 var ambientLight = new THREE.AmbientLight( 0x606060 );
+ 96                 scene.add( ambientLight );
+ 97                 //创建平行光为白色
+ 98                 var directionalLight = new THREE.DirectionalLight( 0xffffff );
+ 99                 directionalLight.position.set( 1, 0.75, 0.5 ).normalize();
+100                 scene.add( directionalLight );
+101 
+102                 renderer = new THREE.WebGLRenderer( { antialias: true } );//生成渲染器对象，锯齿效果为true
+103                 renderer.setClearColor( 0xf0f0f0 );
+104                 renderer.setPixelRatio( window.devicePixelRatio );
+105                 renderer.setSize( window.innerWidth, window.innerHeight );
+106                 container.appendChild( renderer.domElement );
+107                 document.addEventListener( 'mousemove', onDocumentMouseMove, false );//鼠标移动事件
+108                 document.addEventListener( 'mousedown', onDocumentMouseDown, false );//鼠标点击事件
+109                 document.addEventListener( 'keydown', onDocumentKeyDown, false );//对shift按键的控制
+110                 document.addEventListener( 'keyup', onDocumentKeyUp, false );//对shift按键的控制
+111                 window.addEventListener( 'resize', onWindowResize, false );//窗口改变事件
+112             }
+113 
+114 
+115 
+116             //把创建鼠标跟随几何图形和实体图形都抽象成函数，通过点击事件进行调用
+117             function method1(){
+118                 methodfollow1();
+119                 // 实体对象，就是鼠标点击确定之后的实体对象，并且实体对象的图片引入
+120                 cubeGeo = new THREE.BoxGeometry( 50, 50, 50 );
+121                 cubeMaterial = new THREE.MeshLambertMaterial( { color: 0xfeb74c, map: new THREE.TextureLoader().load( "textures/square-outline-textured.png" ) } );
+122             }
+123             function method2(){
+124                 methodfollow2();
+125                 // 实体对象，就是鼠标点击确定之后的实体对象，并且实体对象的图片引入
+126                 cubeGeo = new THREE.SphereGeometry( 50, 10, 10 );
+127                 cubeMaterial = new THREE.MeshLambertMaterial( { color: 0x4D662D/*, map: new THREE.TextureLoader().load( "textures/square-outline-textured.png" )*/ } );
+128             }
+129             function method3(){
+130                 methodfollow3();
+131                 // 实体对象，就是鼠标点击确定之后的实体对象，并且实体对象的图片引入
+132                 cubeGeo = new THREE.CubeGeometry( 50, 100, 50 );
+133                 cubeMaterial = new THREE.MeshLambertMaterial( { color: 0x4D662D, map: new THREE.TextureLoader().load( "textures/square-outline-textured.png" ) } );
+134             }
+135             function method4(){
+136                 methodfollow4();
+137                 // 实体对象，就是鼠标点击确定之后的实体对象，并且实体对象的图片引入
+138                 cubeGeo = new THREE.CylinderBufferGeometry( 25,25, 100, 50 ,50);
+139                 cubeMaterial = new THREE.MeshLambertMaterial( { color: 0x4D662D, map: new THREE.TextureLoader().load( "textures/square-outline-textured.png" ) } );
+140             }
+141             function method5(){
+142                 window.open("newwindows.html","_blank","resizable=yes,scrollbars=yes,titlebar=yes,windth=800,height=800");
+143             }
+144 
+145             function methodfollow1(){
+146                 // 这个几何对象是鼠标在移动时候，跟随鼠标显示的几何对象
+147                 rollOverGeo = new THREE.BoxGeometry( 50, 50, 50 );//创建一个盒状几何对象
+148                 rollOverMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000, opacity: 0.5, transparent: true } );
+149                 //创建一个色彩为红色的材料，透明度为半透明
+150                 rollOverMesh = new THREE.Mesh( rollOverGeo, rollOverMaterial );
+151                 //通过mesh方法把颜色应用到几何对象上
+152                 scene.add( rollOverMesh );
+153                 //最后把该立方体对象添加到场景scene中
+154             }
+155             function methodfollow2(){
+156                 // 这个几何对象是鼠标在移动时候，跟随鼠标显示的几何对象
+157                 rollOverGeo = new THREE.SphereGeometry( 50, 10, 10 );//创建一个盒状几何对象
+158                 rollOverMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000, opacity: 0.5, transparent: true } );
+159                 //创建一个色彩为红色的材料，透明度为半透明
+160                 rollOverMesh = new THREE.Mesh( rollOverGeo, rollOverMaterial );
+161                 //通过mesh方法把颜色应用到几何对象上
+162                 scene.add( rollOverMesh );
+163                 //最后把该立方体对象添加到场景scene中
+164             }
+165             function methodfollow3(){
+166                 // 这个几何对象是鼠标在移动时候，跟随鼠标显示的几何对象
+167                 rollOverGeo = new THREE.CubeGeometry( 50, 100, 50 );//创建一个盒状几何对象
+168                 rollOverMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000, opacity: 0.5, transparent: true } );
+169                 //创建一个色彩为红色的材料，透明度为半透明
+170                 rollOverMesh = new THREE.Mesh( rollOverGeo, rollOverMaterial );
+171                 //通过mesh方法把颜色应用到几何对象上
+172                 scene.add( rollOverMesh );
+173                 //最后把该立方体对象添加到场景scene中
+174             }
+175             function methodfollow4(){
+176                 // 这个几何对象是鼠标在移动时候，跟随鼠标显示的几何对象
+177                 rollOverGeo = new THREE.CylinderGeometry( 25,25 ,100, 50,50 );//创建一个盒状几何对象
+178                 rollOverMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000, opacity: 0.5, transparent: true } );
+179                 //创建一个色彩为红色的材料，透明度为半透明
+180                 rollOverMesh = new THREE.Mesh( rollOverGeo, rollOverMaterial );
+181                 //通过mesh方法把颜色应用到几何对象上
+182                 scene.add( rollOverMesh );
+183                 //最后把该立方体对象添加到场景scene中
+184             }
+185 
+186 
+187             function onWindowResize() {
+188 
+189                 camera.aspect = window.innerWidth / window.innerHeight;
+190                 camera.updateProjectionMatrix();
+191 
+192                 renderer.setSize( window.innerWidth, window.innerHeight );
+193 
+194             }
+195 
+196             function onDocumentMouseMove( event ) {
+197                 event.preventDefault();//取消事件的默认动作
+198                 mouse.set( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1 );
+199                 raycaster.setFromCamera( mouse, camera );
+200                 var intersects = raycaster.intersectObjects( objects );
+201                 if ( intersects.length > 0 ) {
+202                     var intersect = intersects[ 0 ];
+203                     rollOverMesh.position.copy( intersect.point ).add( intersect.face.normal );
+204                     rollOverMesh.position.divideScalar( 50 ).floor().multiplyScalar( 50 ).addScalar( 25 );
+205                 }
+206                 render();
+207             }
+208             function onDocumentMouseDown( event ) {
+209                 event.preventDefault();
+210                 mouse.set( ( event.clientX / window.innerWidth ) * 2 - 1, - ( event.clientY / window.innerHeight ) * 2 + 1 );
+211                 raycaster.setFromCamera( mouse, camera );
+212                 var intersects = raycaster.intersectObjects( objects );
+213                 if ( intersects.length > 0 ) {
+214                     var intersect = intersects[ 0 ];
+215                     // delete cube
+216                     if ( isShiftDown ) {
+217                         if ( intersect.object != plane ) {
+218                             scene.remove( intersect.object );
+219                             objects.splice( objects.indexOf( intersect.object ), 1 );
+220                         }
+221                     // create cube
+222                     } else {
+223                         var voxel = new THREE.Mesh( cubeGeo, cubeMaterial );
+224                         voxel.position.copy( intersect.point ).add( intersect.face.normal );
+225                         voxel.position.divideScalar( 50 ).floor().multiplyScalar( 50 ).addScalar( 25 );
+226                         scene.add( voxel );
+227                         objects.push( voxel );
+228                     }
+229                     render();
+230                 }
+231             }
+232             function onDocumentKeyDown( event ) {
+233                 switch( event.keyCode ) {
+234                     case 16: isShiftDown = true; break;
+235                 }
+236             }
+237             function onDocumentKeyUp( event ) {
+238                 switch ( event.keyCode ) {
+239                     case 16: isShiftDown = false; break;
+240                 }
+241             }
+242             function render() {
+243 
+244                 renderer.render( scene, camera );
+245 
+246             }
+247 
+248         </script>
+249     </body>
+250 </html>
+源代码
